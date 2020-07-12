@@ -21,34 +21,45 @@ Buffer Pool 是innodb 缓存表数据及索引数据的主要内存空间，允�
 ## 1. 配置 InnoDB Buffer Pool 大小
 
 关于 buffer pool 配置可以在启动时配置，也可以在运行时配置。相关的配置有这么几个：
+
+```config
 innodb_buffer_pool_size  
 innodb_buffer_pool_chunk_size  块大小，默认128M。以1MB为单位增加或者缩小，只能在启动时配置。
 innodb_buffer_pool_instances 实例个数
+```
 
 innodb_buffer_pool_instances 是根据配置设定，保持固定不变。但是针对 innodb_buffer_pool_size 与 innodb_buffer_pool_chunk_size 虽然提供配置项，但是会根据情况适当自动调整，最终寻找一个平衡点：innodb_buffer_pool_size = n * (innodb_buffer_pool_chunk_size * innodb_buffer_pool_instances)，其中 n 是正整数。如果 n 小于 1 时，也就是说 innodb_buffer_pool_chunk_size * innodb_buffer_pool_instances 大于 innodb_buffer_pool_size 时，则会减小 innodb_buffer_pool_chunk_size 的大小，以使等式成立。当 n 小于 1 时，为什么不调整 innodb_buffer_pool_size 的值，而是调整 innodb_buffer_pool_chunk_size 的值呢？？？暂时还不知道确切的原因 ，有待进一步考究。
 
-a. innodb_buffer_pool_size 的自动变化
+### a. innodb_buffer_pool_size 的自动变化
 
 比如：
+
+```config
 innodb_buffer_pool_size = 9G
 innodb_buffer_pool_instances = 16
 innodb_buffer_pool_chunk_size = 128M
+```
 
 innodb_buffer_pool_instances * innodb_buffer_pool_chunk_size = 16 * 128M = 2G，9 不能被 2 整除，因此 innodb_buffer_pool_instances 会自动上调到 10G，成为整数倍。所以，我们在设定 innodb_buffer_pool_instances 参数时最好是先计算一下，尽量保持设定的值与实际的值一致，做到符合预期，心里有数。
 
-b.  innodb_buffer_pool_chunk_size 的自动变化
+### b.  innodb_buffer_pool_chunk_size 的自动变化
 
 比如：
+
+```config
 innodb_buffer_pool_size = 2G
 innodb_buffer_pool_instances = 4
 innodb_buffer_pool_chunk_size = 1G
+```
 
 innodb_buffer_pool_instances * innodb_buffer_pool_chunk_size = 4 * 1G = 4G，大于 innodb_buffer_pool_size 的大小，因此会缩小 innodb_buffer_pool_chunk_size 为 ：2G / 4 = 512M
 
-关于在线（OnLine）修改 Buffer Pool Szie 的知识点：
+### 关于在线（OnLine）修改 Buffer Pool Szie 的知识点
 
 * a. 在线配置 buffer pool size ，可以直接通过 SET GLOBAL 指令 完成。在 resizing 开始之前，所有通过 InnoDB API 执行的活动事务与操作需要先完成。一旦，resizing 操作开始进行，要求访问 buffer pool 的事务与操作必须等待直到resizing 完成为止。特殊是，当 buffer pool size 在调下（decreased），buffer pool 在碎片整理，对应页已被收回，这时 buffer pool 上的并发访问是允许的。
+
 * b. 监控 Resize 进度。可以通过 SHOW STATUS 去查看，也可以在 server error log 中查看。
+
 * c. 内部实现又是如何呢？针对增加、减小的情况，分别来描述：
   * i: 增加。1> 在 chunk 中增加 page 。 2> 转换 hash table / list / 指针 使用新的内存地址。3> 增加 page 到 free list 中。总之，当执行增加操作时，其他访问 buffer pool 的线程都处于阻塞状态。
   * ii: 减少。1> buffer pool 碎片整理，收回空闲页（free page）。 2> 移除 chunk中的页（page） 3> 转换 hash table /list / 指针使用新的内存地址。总之，在执行减少操作时，只有第一阶段允许其他线程对 buffer pool 的并发访问。
@@ -61,7 +72,7 @@ innodb_buffer_pool_instances * innodb_buffer_pool_chunk_size = 4 * 1G = 4G，大
 
 为了开启多个buffer pool 实例，需要设置 innodb_buffer_pool_instances 大于1、小于等于 64 ，默认值为 1，最大值为 64。并且，只有当 innodb_buffer_pool_size 配置为大于等于1G时，这个功能才会生效。你指定的 innodb_buffer_pool_size 的总大小会被分到所有的 buffer pool 实例中。因此，为了最好的效率，innodb_buffer_pool_size 与 innodb_buffer_pool_instances 一起设置，以使得每个 buffer pool 的大小至少为 1G。
 
-## . 配置针对 buffer pool 扫描的限制
+## 3. 配置针对 buffer pool 扫描的限制
 
 Innodb 使用了一项技术，减少了不会再次被访问数据载入 buffer pool 的数据量。这样做的目标是确保频繁访问的页（hot pages）保留在buffer pool 中，正如预读（read-ahead）以及全表扫描（full-table scans）加载了新的数据块，这些块以后可能会访问，也可能不会被访问。
 
@@ -89,7 +100,7 @@ innodb_old_blocks_pct 与  innodb_old_blocks_time 可以在配置文件中指定
 
 read-ahead 请求是在 buffer pool 中异步的预取多个页的I/O请求，在预期中，这些页将很快被使用。预取请求把在 extent 中的所有页都加载到buffer pool 中。innodb 使用2种 read-ahead 算法来改善I/O性能。
 
-什么是 extent 呢？
+### 什么是 extent 呢
 
 extent 是指在tablespace 中的一组页（pages）。根据页大小的不同而不同，对于页大小（pages size）为 4KB/ 8KB/ 16KB 时，extent的大小为 1MB。在Mysql 5.7 中，增加了对 32KB /64KB 页大小的支持，此时，32KB的页对应的 extent 为 2MB，而对于 64KB的页对应的 extent 为 4MB。Innodb 的一些特征，如 segments /read-ahead 请求/ doublewrite buffer 使用到的 I/O请求（read / write / allocate / free data），每次操作一个 extent ，而不是一个页（page）。
 
@@ -111,7 +122,7 @@ Buffer pool 的 flushing 在脏页到达低水位（low water mark）时开始�
 
 innodb_max_dirty_pages_pct_lwm 阀值的目的是控制 buffer pool 中脏页的比例，防止到达脏页的最大阀值  innodb_max_dirty_pages_pct ，默认值时 75 。如果脏页触达 innodb_max_dirth_pages_pct 定义的最大阀值时，innodb 将会侵略性的开始 flush 脏页。
 
-有一些额外的变量允许调整 buffer pool  的 flushing 行为：
+### 有一些额外的变量允许调整 buffer pool  的 flushing 行为
 
 * a. innodb_flush_neighbors
 innodb_flush_neighbors 定义是否同时 flush 同一个 extent 中的其他脏页。有 3个值可以设置。1> 设置为 0 表示关闭这个功能，也就是在同一个 extent 中的脏页不会被 flush。2> 设置为 1 表示 flush 在同一个 extent 中邻近的脏页。3> 设置为 2 表示 flush 在同一个 extent 中的所有脏页。
@@ -126,7 +137,7 @@ innodb_lru_scan_depth 指定了针对每个 buffer pool 实例，在 buffer pool
 
 innodb_flush_neighbors 与 innodb_lru_scan_depth 这2项配置主要是为了用于写密集型工作负载。如果有大量的 DML 活动，如果不进行侵略性的 flush ，flush 可能会落后。如果 flush 太频繁又会导致 I/O 容量饱和。理想的设置取决于你的工作负载、数据访问模式、存储配置（如，是否数据存储在HDD 还是 SSD 设备上）。
 
-自适应的 Flushing (Adaptive Flushing)
+### 自适应的 Flushing (Adaptive Flushing)
 
 Innodb 使用一种基于 redo log 生成速度与 flushing 当前状态的算法来动态调节 flushing 速度。这个目的就是通过让 flush 活动与当前负载保持一致，进而平滑总体的性能。自动调节 flush 速度可以避免因突发的IO活动导致吞吐量的突然下降，这可能是由于在正常的读写活动上 flushing 造成的。
 
@@ -161,8 +172,11 @@ innodb_io_capacity 设置是针对所有的 buffer pool 实例的。当脏页需
 底层原理包含了一个异步线程，会分派执行 dump 与 load 操作。
 
 压缩表的磁盘页（disk pages）将会已他们的压缩格式加载到 buffer pool 中。当DML操作访问到这些页的内容时，这些页将按正常解压缩（uncompressed）。因为解压缩页是一个CPU密集型的操作，因此在一个连接线程中并发执行比在执行 buffer pool 恢复操作的单个线程中更高效。
+
 可以通过 innodb_buffer_pool_dump_pct 来设置导出 buffer pool 的百分比，可以在配置文件中设定，也可以在运行时设定。可以通过 innodb_buffer_pool_dump_at_shutdown 与 innodb_buffer_pool_load_at_startup 来设定关机自动保存及开启自动加载，默认值，应该是启用状态。
+
 在 Mysql 5.7 中当 innodb_buffer_pool_dump_at_shutdown 与 innodb_buffer_pool_load_at_startup 开启时，innodb_buffer_pool_dump_pct  的默认值会从 100 变为 25%（只导出25%最近最常访问的页）。
+
 也可以通过 SET GLOBAL innodb_buffer_pool_dump_now=ON /  SET GLOBAL innodb_buffer_pool_load_now=ON  来开启一次导出或者导入，同时可以 SHOW STATUS LIEK 'Innodb_buffer_pool_dump_status' 来查看执行进度。
 
 另外，我们也可以通过 Performance Schema 来监控 Buffer Pool  加载进度。
