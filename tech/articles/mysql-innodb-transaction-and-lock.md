@@ -13,11 +13,12 @@ InnoDB 实现了标准的行级锁（row-level locking），包括2种类型，�
 
 * T2 想要持有 S 锁，则可以立即获得。结果，T1 与 T2 在行 r 上都获得了 S 锁。
 * T2 想要持有 X 锁，则不能立即获得。
-如果事务T1 在行 r 上持有一个互斥锁（X），那么一些不同的事务T2想要在行 r 上获得任何类型的锁都不能理解获得。然而，事务T2必须等待事务 T1 释放在行 r 上的锁。
+  
+如果事务T1 在行 r 上持有一个互斥锁（X），那么一些不同的事务T2想要在行 r 上获得任何类型的锁都不能立即获得。然而，事务T2必须等待事务 T1 释放在行 r 上的锁。
 
 ### b. 意图锁（Intention Locks）
 
-InnoDB 支持多种粒度的锁，允许行锁（row locks）与表锁（table locks）共存。例如，LOCK TABLE ... WRITE 声明在特定的表上获得一个互斥锁（exclusive lock / X lock）。为了在多个级别上实现锁，InnoDB 使用了意图锁（Intention Locks）。意图锁是表级锁（table-level locks），指出一个事务稍后将要在表中行上获得哪种类型的锁（共享锁或者互斥锁）。有2种类型的互斥锁：
+InnoDB 支持多种粒度的锁，允许行锁（row locks）与表锁（table locks）共存。例如，LOCK TABLE ... WRITE 声明在特定的表上获得一个互斥锁（exclusive lock / X lock）。为了在多个级别上实现锁，InnoDB 使用了意图锁（Intention Locks）。意图锁是表级锁（table-level locks），指出一个事务稍后将要在表中行上获得哪种类型的锁（共享锁或者互斥锁）。有2种类型的意图锁：
 
 * 意图共享锁（Intention shared lock / IS）指出一个事务想要在表中单个行上设定共享锁（shared lock）
 * 意图互斥锁（Intention exclusive lock / IX）指出一个事务想要在表中单个行上设置互斥锁（exclusive lock）
@@ -33,9 +34,9 @@ InnoDB 支持多种粒度的锁，允许行锁（row locks）与表锁（table l
 x
 x
 
-如果与一个锁与已经存在的锁是兼容的（compatible）， 则这个锁授予给请求的事务，但是如果是冲突的（conflict）那么则不会。事务将等待直到与已经存在的锁冲突解除。如果一个锁请求与已经存在的锁因为将导致死锁（deadlock）而冲突，则会产生一个错误。
+如果与一个锁与已经存在的锁是兼容的（compatible）， 则这个锁被授予给请求的事务，但是如果是冲突的（conflict）那么则不会。事务将等待直到与已经存在的锁冲突解除。如果一个锁请求与已经存在的锁由于即将导致死锁（deadlock）而冲突，则会产生一个错误。
 
-意图锁不会阻塞除 full table requests（例如， LOCK TABLES ... WRITE）之外的的任何东西。意图锁的主要目的是展示有人正在锁定表中的一个行，或者是将要锁定表中一个行。
+意图锁不会阻塞除全表请求 full table requests（例如， LOCK TABLES ... WRITE）之外的的任何东西。意图锁的主要目的是展示有人正在锁定表中的一个行，或者是将要锁定表中一个行。
 
 ### c. 记录锁（Record Locks）
 
