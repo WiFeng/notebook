@@ -32,7 +32,5 @@ func main() {
 		print("no communication\n")
 	}
 
-	copy()
-
 	_ = c
 }
