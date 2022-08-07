@@ -121,6 +121,13 @@ Hello World
 * 对于已经关闭的 channel 执行 send 操作则出现 panic 错误。
 * 对于已经关闭的 channel 执行 read 操作并不会出错，而是返回默认值，也不再阻塞。
 * 对于正在等待接收 channel 消息的协程，如果这时另一个协程执行了close 操作，则当前协程会立即收到一个消息，其值为 channel 中数据类型的默认值，ok 为false。如果channel 未关闭，则 ok 为true。可利用这个状态来识别是否是 close 操作发送的消息。
+* 对于channel 的接收侧，不管这个channel 定义是否是有缓存的，只有读取到数据时才继续执行，否则一致处于阻塞状态。当channel 已经关闭时，也可以读取到 channel 已经关闭的状态消息，因此也不会阻塞。
+* 定义channel 时可以指定其方向，发送，还是接受。如果指定了方向，那么这个channel 是单向的，否则他就是双向的。也即通过定义就可以限制 channel 的方向。如果使用时没有按照定义的方向使用，则出现编译失败，最大限度的避免了隐含bug的产生。
+* 对于单向的channel 直接初始化那么就没有任何用武之地。可以通过使用双向channel来初始化。在赋值时，双向通道的chan 可以赋值给单向通道，但是单向通道不能赋值给双向通道。方向不用的通道也不可以赋值。见下面示例。
+* 对于只定义为写入的通道，也不能执行 for range 操作，但是双向通道可以。
+* 多个协程可以直接使用 `cap` `len` 函数来计算 channel 中容量与实际的存放条目个数，并不需要额外的sync锁机制。
+* channel 中读取顺序与写入顺序一致。一个channel 可以同时支持多个消息发送者，或者是多个消息接收者，这时候的顺序整体是一致的，但是要完全一致则需要使用一些特殊的手段。
+
 
 ```golang
 func main() {
@@ -227,4 +234,98 @@ func main() {
 Hello World
 go1 1 true
 go2
+```
+
+chan 定义时指定方向
+
+```golang
+    var c1 chan T          // can be used to send and receive values of type T
+    var c2 chan<- float64  // can only be used to send float64s
+    var c3 <-chan int      // can only be used to receive ints
+```
+
+`<-` 操作尽可能与最左侧的chan关联
+
+```golang
+    chan<- chan int    // same as chan<- (chan int)
+    chan<- <-chan int  // same as chan<- (<-chan int)
+    <-chan <-chan int  // same as <-chan (<-chan int)
+    chan (<-chan int)
+```
+
+通过巧妙应用chan 方向，来限制错误的读取与写入
+
+```golang
+func main() {
+    fmt.Println("Hello World")
+
+    var c = make(chan int, 10)
+
+    go func(cc chan<- int) {
+    // go func(cc <-chan int) {
+        for {
+            if r, ok := <-cc; !ok {
+                // close
+                break
+            } else {
+                fmt.Println("r:", r)
+            }
+
+        }
+    }(c)
+
+    go func(cc chan<- int) {
+        cc <- 10
+        cc <- 11
+        cc <- 12
+    }(c)
+
+    time.Sleep(20 * time.Second)
+}
+
+```
+
+```plain
+// OUTPUT
+
+Error
+./prog.go:15:18: invalid operation: cannot receive from send-only channel cc (variable of type chan<- int)
+```
+
+```golang
+func main() {
+    fmt.Println("Hello World")
+
+    var c = make(chan int, 10)
+
+    // go func(cc chan<- int) {
+    go func(cc <-chan int) {
+        for {
+            if r, ok := <-cc; !ok {
+                // close
+                break
+            } else {
+                fmt.Println("r:", r)
+            }
+
+        }
+    }(c)
+
+    go func(cc chan<- int) {
+        cc <- 10
+        cc <- 11
+        cc <- 12
+    }(c)
+
+    time.Sleep(20 * time.Second)
+}
+```
+
+```plain
+// OUTPUT
+
+Hello World
+r: 10
+r: 11
+r: 12
 ```
