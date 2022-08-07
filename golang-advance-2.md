@@ -95,9 +95,69 @@ main,r: 4
 
 ## select
 
-* `select`操作用于在接收操作、发送操作集合中选择可以执行的操作执行。与 switch 很像，但是 select 的 case 都是通讯的操作。 
-* select 可以定义最多一个 default case，可以出现在 case 列表的任意位置。switch中的default 只能定义在 case 列表的最下方，否则在default case 之后的 case 则永远无法执行。
+* `select`操作用于在接收操作、发送操作集合中选择可以执行的操作执行。与 `switch` 很像，但是 `select` 的 case 都是通讯的操作。
+* 在 `select` 中最多只能定义一个 `default case`，其可以出现在 case 列表的任意位置。`switch`中的 default 只能定义在 case 列表的最下方，否则在 `default case` 之后的 case 则永远无法执行。
+* select 执行分位以下几个步骤：
+  * 在进入`select`前，所有的case都会进行评估，按照定义顺序、`exactly once`(仅且只有一次)，其中包括 recv 声明中的 channel, send 声明中的channel 以及其右侧的表达式。无论是否有 case 会选中执行，在这个评估过程中的副作用总会产生。参考下方的示例可知，虽然实际执行了 `default case`，但是 f 函数依然被调用了。
+  * 如果一个或者多个通信可以执行（就是除default之外的其他case），会随机选择一个执行。否则，如果有 `default case` ， 则执行`default case`，如果没有 `default case`，这个 `select` 将一致阻塞直到至少有一个通信（communication）可以执行。
+  * 除非选中的是 `default case`，否则通信操作将被执行。
+  * 如果选中的 case 是 recv 声明（短变量声明或者赋值），左侧的表达式将被评估，并且把接收到的值进行赋值。
+  * 选中的 case 被执行。
+* 在 `select` 执行中，有提到评估、执行2种说法，评估其实就是执行，只是把中间步骤中执行统一使用评估一词来描述，为了直观上的执行进行区分。
+* 因为在一个 `nil` 的 channel 上通信永远不会发生，因此只有 `nil` channel 且没有 `default case` 的 `select` 将永远阻塞。
 
+```golang
+func f() int {
+    fmt.Println("f()")
+    return 2
+}
+
+func main() {
+    var a []int
+    var c, c1, c2, c3, c4 chan int
+    var i1, i2 int
+    // c2 = make(chan int, 2)
+
+    select {
+    case i1 = <-c1:
+        print("received ", i1, " from c1\n")
+    case c2 <- f():
+        print("sent ", i2, " to c2\n")
+    case i3, ok := (<-c3): // same as: i3, ok := <-c3
+        if ok {
+            print("received ", i3, " from c3\n")
+        } else {
+            print("c3 is closed\n")
+        }
+    case a[f()] = <-c4:
+        // same as:
+        // case t := <-c4
+        //    a[f()] = t
+    default:
+        print("no communication\n")
+    }
+
+    _ = c
+}
+```
+
+```plain
+// OUTPUT
+
+f()
+no communication
+```
+
+```golang
+for {  // send random sequence of bits to c
+    select {
+    case c <- 0:  // note: no statement, no fallthrough, no folding of cases
+    case c <- 1:
+    }
+}
+
+select {}  // block forever
+```
 
 ## switch type
 
