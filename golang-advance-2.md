@@ -159,13 +159,78 @@ for {  // send random sequence of bits to c
 select {}  // block forever
 ```
 
-## switch type
+## Type switches
 
+* type switch 比较类型而不是比较值。除此之外，它跟 expression switch 很像。
+* 除了普通类型可以作为 case 之外，预定义的 nil 也可以。当这个switch 求解的变量是一个nil类型时，这个case被选中执行。
+* 只有 interface 类型可以执行 switch type 操作。其他明确的类型是不需要的，也是不允许的。
+* switch 类型断言的使用切勿进行完全封装，把所有类型都接收回来进行一次处理。golang 提供了这种方法是需要活学活用，切勿把一切类型都通过统一的一个函数封装来实现，因为在不同的场景，允许的类型集合可能不是不同的，对于那些上下文中不支持的类型我们要给出错误提示。
 
+```golang
+switch i := x.(type) {
+case nil:
+    printString("x is nil")                // type of i is type of x (interface{})
+case int:
+    printInt(i)                            // type of i is int
+case float64:
+    printFloat64(i)                        // type of i is float64
+case func(int) float64:
+    printFunction(i)                       // type of i is func(int) float64
+case bool, string:
+    printString("type is bool or string")  // type of i is type of x (interface{})
+default:
+    printString("don't know the type")     // type of i is type of x (interface{})
+}
+```
 
 ## new 与 make 区别
 
-## 类方法定义
+
+
+## 方法定义
+
+* 对于任何指定的类型都可以定义方法（除指针 与 interface类型），并不是必须要是一个结构体。
+* 指针与值的区别。指针很明确在方法内部的修改会被调用方可见。但是指针是否生效是方法的定义决定的，与方法调用时变量是否是指针类型无关。如果定义的方法是指针类型，即使调用时变量使用的是值类型，只要这个变量地址是可获取的，那么编译器会自动转换为 `&s.add` 方式调用。如果定义的方式是值类型，即使调用时变量使用是的指针类型，在编译阶段也会预处理，实际接收到是原有变量值的副本，因此原有变量并不会被修改。
+* 标准是：值类型的方法允许接收值类型的变量与指针类型的变量，但是指针类型的方法只允许接收指针类型的变量。在这个标准之上，编译器为我们自动进行了一些处理，最终就是上一条的规则。
+
+```golang
+type S struct {
+    x    int
+    sum  int
+    sum2 int
+}
+
+func (s S) add(y int) {
+    s.sum = s.x + y
+}
+
+func (s *S) add2(y int) {
+    s.sum2 = s.x + y
+}
+
+func main() {
+    s := S{
+        x: 1,
+    }
+    s.add(2)
+    s.add2(2)
+    fmt.Println(s.sum, s.sum2)
+
+    s1 := &S{
+        x: 1,
+    }
+    s1.add(2)
+    s1.add2(2)
+    fmt.Println(s1.sum, s1.sum2)
+}
+```
+
+```plain
+// OUTPUT
+
+0 3
+0 3
+```
 
 ## 参数传递
 
