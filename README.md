@@ -1,4 +1,4 @@
-# notebook
+# 个人学习笔记、总结
 
 ## Redis
 
@@ -6,7 +6,7 @@
 
 ## Nginx
 
-* [nginx 源码主函数调用过程（脑图）](nginx-code-study.png)
+* [nginx 源码主函数调用过程（脑图）](nginx-code-study.md)
 
 ## MySQL
 
